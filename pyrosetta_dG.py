@@ -14,6 +14,9 @@ from pyrosetta.rosetta.core.pack.task import operation
 from pyrosetta.rosetta.core.select import residue_selector as selections
 from pyrosetta.rosetta.core.select.movemap import MoveMapFactory, move_map_action
 from pyrosetta.rosetta.core.scoring import ScoreType
+import os
+from tqdm import tqdm
+
 
 pyrosetta.init(' '.join([
     '-mute', 'all',
@@ -34,7 +37,7 @@ def current_milli_time():
     return round(time.time() * 1000)
 
 
-def get_scorefxn(scorefxn_name: str):
+def get_scorefxn(scorefxn_name:str):
     """
     Gets the scorefxn with appropriate corrections.
     Taken from: https://gist.github.com/matteoferla/b33585f3aeab58b8424581279e032550
@@ -55,7 +58,7 @@ def get_scorefxn(scorefxn_name: str):
     elif 'genpot' in scorefxn_name:
         corrections['gen_potential'] = True
         pyrosetta.rosetta.basic.options.set_boolean_option('corrections:beta_july15', True)
-    elif 'talaris' in scorefxn_name:  # 2013 and 2014
+    elif 'talaris' in scorefxn_name:  #2013 and 2014
         corrections['restore_talaris_behavior'] = True
     else:
         pass
@@ -65,7 +68,7 @@ def get_scorefxn(scorefxn_name: str):
 
 
 class RelaxRegion(object):
-
+    
     def __init__(self, scorefxn='ref2015', max_iter=1000, subset='nbrs', move_bb=True):
         super().__init__()
 
@@ -78,21 +81,20 @@ class RelaxRegion(object):
         self.subset = subset
         self.move_bb = move_bb
 
-    def __call__(self, pdb_path, ligand_chains, flexible_residue_first=None,
-                 flexible_residue_last=None):  # flexible_residue_first, flexible_residue_last):
+    def __call__(self, pdb_path, ligand_chains, flexible_residue_first=None, flexible_residue_last=None): # flexible_residue_first, flexible_residue_last):
         pose = pyrosetta.pose_from_pdb(pdb_path)
         start_t = current_milli_time()
         original_pose = pose.clone()
 
         tf = TaskFactory()
         tf.push_back(operation.InitializeFromCommandline())
-        tf.push_back(operation.RestrictToRepacking())  # Only allow residues to repack. No design at any position.
+        tf.push_back(operation.RestrictToRepacking())   # Only allow residues to repack. No design at any position.
 
         # Create selector for the region to be relaxed
         # Turn off design and repacking on irrelevant positions
-        # if flexible_residue_first[-1] == ' ':
+        # if flexible_residue_first[-1] == ' ': 
         #     flexible_residue_first = flexible_residue_first[:-1]
-        # if flexible_residue_last[-1] == ' ':
+        # if flexible_residue_last[-1] == ' ':  
         #     flexible_residue_last  = flexible_residue_last[:-1]
         if self.subset != 'all':
             if flexible_residue_first is None or flexible_residue_last is None:
@@ -106,8 +108,8 @@ class RelaxRegion(object):
             else:
                 gen_selector = selections.ResidueIndexSelector()
                 gen_selector.set_index_range(
-                    pose.pdb_info().pdb2pose(*flexible_residue_first),
-                    pose.pdb_info().pdb2pose(*flexible_residue_last),
+                    pose.pdb_info().pdb2pose(*flexible_residue_first), 
+                    pose.pdb_info().pdb2pose(*flexible_residue_last), 
                 )
             nbr_selector = selections.NeighborhoodResidueSelector()
             nbr_selector.set_focus_selector(gen_selector)
@@ -120,7 +122,7 @@ class RelaxRegion(object):
 
             prevent_repacking_rlt = operation.PreventRepackingRLT()
             prevent_subset_repacking = operation.OperateOnResidueSubset(
-                prevent_repacking_rlt,
+                prevent_repacking_rlt, 
                 subset_selector,
                 flip_subset=True,
             )
@@ -132,17 +134,17 @@ class RelaxRegion(object):
         pose = original_pose.clone()
 
         mmf = MoveMapFactory()
-        if self.move_bb:
+        if self.move_bb: 
             mmf.add_bb_action(move_map_action.mm_enable, gen_selector)
         mmf.add_chi_action(move_map_action.mm_enable, subset_selector)
-        mm = mmf.create_movemap_from_pose(pose)
+        mm  = mmf.create_movemap_from_pose(pose)
 
         fr.set_movemap(mm)
         fr.set_task_factory(tf)
         fr.apply(pose)
 
         e_before = scorefxn(original_pose)
-        e_relax = scorefxn(pose)
+        e_relax  = scorefxn(pose) 
         # print('\n\n[Finished in %.2f secs]' % ((current_milli_time() - start_t) / 1000))
         # print(' > Energy (before):    %.4f' % scorefxn(original_pose))
         # print(' > Energy (optimized): %.4f' % scorefxn(pose))
@@ -160,8 +162,7 @@ def pyrosetta_fastrelax(pdb_path, out_path, ligand_chains, flexible_residue_firs
     pose_min.dump_pdb(out_path)
 
 
-def pyrosetta_interface_energy(pdb_path, receptor_chains, ligand_chains, return_dict=False, relax=False, relax_opt={},
-                               relax_save_pdb=None):
+def pyrosetta_interface_energy(pdb_path, receptor_chains, ligand_chains, return_dict=False, relax=False, relax_opt={}, relax_save_pdb=None):
     if relax:
         minimizer = RelaxRegion()
         pose, _, _ = minimizer(
@@ -182,12 +183,35 @@ def pyrosetta_interface_energy(pdb_path, receptor_chains, ligand_chains, return_
 
 
 if __name__ == '__main__':
-    args = {
-        'pdb_path': '/public/compute_dG/5EOK.pdb',
-        'receptor_chains': ['A'],
-        'ligand_chains': ['K'],
-        'relax': True
-    }
+    # 单个样本
+    # args = {
+    #     'pdb_path': '/public/UniMoMo/generations/LinearPeptide/candidates/5EOK/25.pdb',
+    #     'receptor_chains': ['A'],
+    #     'ligand_chains': ['K'],
+    #     'relax': True
+    # }
 
-    dG = pyrosetta_interface_energy(**args)
-    print(dG)
+    # dG = pyrosetta_interface_energy(**args)
+    # print(dG)
+
+    # 批量处理
+    input_pdb_folder = '/public/PepGLAD/'
+    out_file = 'result_dG/PepGLAD_pyrosetta_dG.jsonl'
+    results = []
+    for pdb in tqdm(os.listdir(input_pdb_folder), desc='Processing pyrosetta dG'):
+        if pdb.endswith('.pdb'):
+            # print(f'------------Processing {pdb}----------------')
+            args = {
+                    'pdb_path': os.path.join(input_pdb_folder, pdb),
+                    'receptor_chains': ['A'],
+                    'ligand_chains': ['B'],
+                    'relax': True
+                    }
+            dG = pyrosetta_interface_energy(**args)
+            # print(dG)
+            results.append((args['pdb_path'], args['receptor_chains'], args['ligand_chains'], dG))
+
+    with open(out_file, 'w') as fout:
+        fout.write('pdb_path\trec_chain\tlig_chain\tpyrosetta_dG\n')
+        for i, (pdb_path, rec_chain, lig_chain, dG) in enumerate(results):
+            fout.write(f'{pdb_path}\t{rec_chain}\t{lig_chain}\t{dG}\n')
